@@ -1,0 +1,5 @@
+Flask
+PyMySQL
+SQLAlchemy
+Flask-SQLAlchemy
+openai
