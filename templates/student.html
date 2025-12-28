@@ -1,0 +1,156 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <title>学生中心</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+</head>
+<body class="bg-light">
+<nav class="navbar navbar-dark bg-success mb-4">
+    <div class="container">
+        <span class="navbar-brand">🎓 欢迎同学: {{ username }}</span>
+        <a href="/logout" class="btn btn-light btn-sm">退出</a>
+    </div>
+</nav>
+
+<div class="container">
+    <div class="card">
+        <div class="card-header">📚 图书列表</div>
+        <div class="card-body">
+            <table class="table table-hover align-middle">
+                <thead><tr><th>ID</th><th>书名</th><th>作者</th><th>状态</th><th>操作</th></tr></thead>
+                <tbody id="student-book-body"></tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<script>
+    document.addEventListener('DOMContentLoaded', loadBooks);
+
+    function loadBooks() {
+        fetch('/api/books').then(res => res.json()).then(data => {
+            const tbody = document.getElementById('student-book-body');
+            tbody.innerHTML = '';
+            data.forEach(book => {
+                let actionBtn = '';
+                let statusHTML = '';
+
+                if (book.status === '可借阅') {
+                    statusHTML = '<span class="badge bg-success">可借阅</span>';
+                    actionBtn = `<button class="btn btn-primary btn-sm" onclick="borrowBook(${book.id})">借阅</button>`;
+                } else {
+                    // 如果已经被借出，判断是不是自己借的
+                    // 注意：这里需要前端简单判断一下，或者后端已经在api/borrow处理了逻辑
+                    // 简单起见，我们看状态显示
+                    statusHTML = '<span class="badge bg-secondary">被借走了</span>';
+                    // 这里为了方便，我们尝试显示归还按钮，后端会校验是不是你借的
+                    actionBtn = `<button class="btn btn-outline-success btn-sm" onclick="returnBook(${book.id})">归还 (如果是你借的)</button>`;
+                }
+
+                tbody.innerHTML += `
+                    <tr>
+                        <td>${book.id}</td>
+                        <td>${book.title}</td>
+                        <td>${book.author}</td>
+                        <td>${statusHTML}</td>
+                        <td>${actionBtn}</td>
+                    </tr>`;
+            });
+        });
+    }
+
+    function borrowBook(id) {
+        fetch(`/api/borrow/${id}`, {method: 'POST'}).then(res => res.json()).then(data => {
+            alert(data.message); loadBooks();
+        });
+    }
+
+    function returnBook(id) {
+        fetch(`/api/return/${id}`, {method: 'POST'}).then(res => res.json()).then(data => {
+            alert(data.message); loadBooks();
+        });
+    }
+</script>
+<div id="ai-widget" style="position: fixed; bottom: 20px; right: 20px; z-index: 1000;">
+    <div id="chat-panel" class="card shadow" style="width: 320px; height: 450px; display: none; margin-bottom: 15px; border-radius: 10px; overflow: hidden;">
+        <div class="card-header bg-primary text-white d-flex justify-content-between align-items-center">
+            <span>🤖 智能图书助手</span>
+            <button type="button" class="btn-close btn-close-white" onclick="toggleChat()"></button>
+        </div>
+
+        <div class="card-body d-flex flex-column p-2" style="overflow: hidden;">
+            <div id="chat-history" style="flex: 1; overflow-y: auto; font-size: 0.9rem; padding: 5px; min-height: 0; background: #f8f9fa; border-radius: 5px; margin-bottom: 10px;">
+                <div class="text-start mb-2">
+                    <span class="bg-white border p-2 rounded d-inline-block shadow-sm">
+                        👋 你好！我是AI助手。<br>输入书名（如"三体"）查状态，或者输入"推荐"让我介绍好书。
+                    </span>
+                </div>
+            </div>
+
+            <div class="input-group">
+                <input type="text" id="ai-input" class="form-control form-control-sm" placeholder="输入书名..." onkeypress="handleEnter(event)">
+                <button class="btn btn-primary btn-sm" onclick="sendAI()">发送</button>
+            </div>
+        </div>
+    </div>
+
+    <button onclick="toggleChat()" class="btn btn-primary rounded-circle shadow d-flex align-items-center justify-content-center" style="width: 60px; height: 60px; font-size: 30px;">
+        🤖
+    </button>
+</div>
+
+<script>
+    function toggleChat() {
+        const panel = document.getElementById('chat-panel');
+        panel.style.display = panel.style.display === 'none' ? 'flex' : 'none'; // 注意这里改成 flex 保持布局
+        if(panel.style.display === 'flex') {
+            // 打开时自动聚焦输入框
+            setTimeout(() => document.getElementById('ai-input').focus(), 100);
+        }
+    }
+
+    function handleEnter(e) {
+        if(e.key === 'Enter') sendAI();
+    }
+
+    function sendAI() {
+        const input = document.getElementById('ai-input');
+        const text = input.value.trim();
+        if(!text) return;
+
+        const history = document.getElementById('chat-history');
+        // 显示用户消息 (蓝色气泡)
+        history.innerHTML += `
+            <div class="text-end mb-2">
+                <span class="bg-primary text-white p-2 rounded d-inline-block shadow-sm" style="max-width: 80%; text-align: left; word-break: break-all;">${text}</span>
+            </div>`;
+
+        input.value = '';
+        scrollToBottom();
+
+        // 调用后端
+        fetch('/api/ai-agent', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({prompt: text})
+        })
+            .then(res => res.json())
+            .then(data => {
+                // 显示AI回复 (白色气泡)
+                const formattedReply = data.reply.replace(/\n/g, '<br>');
+                history.innerHTML += `
+                <div class="text-start mb-2">
+                    <span class="bg-white border p-2 rounded d-inline-block shadow-sm" style="max-width: 90%; word-break: break-all;">${formattedReply}</span>
+                </div>`;
+                scrollToBottom();
+            });
+    }
+
+    function scrollToBottom() {
+        const history = document.getElementById('chat-history');
+        history.scrollTop = history.scrollHeight;
+    }
+</script>
+</body>
+</html>
